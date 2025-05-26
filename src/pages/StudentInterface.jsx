@@ -29,21 +29,27 @@ export default function StudentsInterface() {
   const [openDisclaimer, setOpenDisclaimer] = useState(false);
   const [selectedAction, setSelectedAction] = useState({ type: "", url: "" });
   const [hasSearched, setHasSearched] = useState(false);
-
-  const handleSearch = async () => {
-    const idTrim = studentId.trim();
-    if (!idTrim) return;
-     setHasSearched(true);
-    try {
-      const { data } = await api.get("/certificates/search", {
-        params: { studentId: idTrim },
-      });
-      setCertificates(data);
-    } catch (err) {
-      console.error("Error fetching certificates:", err);
-      setCertificates([]);
-    }
-  };
+  const [isLoading, setIsLoading] = useState(false);
+const handleSearch = async () => {
+  const idTrim = studentId.trim();
+  if (!idTrim) return;
+  
+  setHasSearched(true);
+  setIsLoading(true); // بدء التحميل
+  setCertificates([]); // مسح الشهادات القديمة أثناء التحميل
+  
+  try {
+    const { data } = await api.get("/certificates/search", {
+      params: { studentId: idTrim },
+    });
+    setCertificates(data);
+  } catch (err) {
+    console.error("Error fetching certificates:", err);
+    setCertificates([]);
+  } finally {
+    setIsLoading(false); // انتهاء التحميل بغض النظر عن النتيجة
+  }
+};
 
   function getDownloadUrl(certificateUrl) {
     return certificateUrl.replace("/upload/", "/upload/fl_attachment/");
@@ -145,16 +151,23 @@ export default function StudentsInterface() {
           )}
 
           {/* Prompt / No results */}
-          {!studentId.trim() && (
-            <Typography className="font-arabic text-center text-gray-500">
-              من فضلك أدخل رقم الطلب للبحث عن الشهادات.
-            </Typography>
-          )}
-          {hasSearched && studentId.trim() && certificates.length === 0 && (
-            <Typography className="font-arabic text-center text-red-500">
-              لا توجد شهادات لهذا المعرف
-            </Typography>
-          )}
+      {!studentId.trim() && (
+  <Typography className="font-arabic text-center text-gray-500">
+      من فضلك أدخل رقم الطلب للبحث عن الشهادات.
+    </Typography>
+  )}
+
+  {isLoading && (
+    <Typography className="font-arabic text-center text-blue-500">
+      جاري البحث عن الشهادات... انتظر لحظة
+    </Typography>
+  )}
+
+  {hasSearched && !isLoading && studentId.trim() && certificates.length === 0 && (
+    <Typography className="font-arabic text-center text-red-500">
+      لا توجد شهادات لهذا المعرف
+    </Typography>
+  )}
 
           {/* Cards View */}
           {certificates.length > 0 && viewMode === "cards" && (
