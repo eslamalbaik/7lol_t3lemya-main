@@ -30,9 +30,9 @@ export function Sidenav({ brandImg, brandName, routes }) {
         <Link to="/" className="py-6 px-8 text-center flex items-center">
         <div className="flex gap-2">
           <div className="w-8 flex items-center justify-center">
-            <img src="/img/logo.jpg"/>
+            <img src="/img/logopro.jpg"/>
           </div>
-          <Typography className="text-2xl font-arabic font-bold" color="blue">حلول التعليمية</Typography>
+          <Typography className="text-2xl font-arabic font-bold" color="blue">المصمم المحترف</Typography>
         </div>
         </Link>
         <IconButton
@@ -97,7 +97,7 @@ export function Sidenav({ brandImg, brandName, routes }) {
 
 Sidenav.defaultProps = {
   brandImg: "/img/logo-ct.png",
-  brandName:"حلول التعليمية",
+  brandName:"المصمم المحترف",
 };
 
 Sidenav.propTypes = {

@@ -71,9 +71,9 @@ const handleSearch = async () => {
       <div className="relative h-72 w-full n rounded-xl bg-cover bg-center bg-[url('/img/background-image.png')]">
         <div className="absolute inset-0 bg-gray-900/75" />
         <div className="absolute inset-0 mb-32 flex flex-col justify-center items-center text-center p-4">
-          <Avatar src="/img/logo.jpg" alt="Logo" size="xl" variant="circular" />
+          <Avatar src="/img/logopro.jpg" alt="Logo" size="xl" variant="circular" />
           <Typography variant="h5" className="mt-4 text-white font-arabic">
-            حلول التعليمية
+            المصمم المحترف
           </Typography>
         </div>
       </div>
@@ -311,7 +311,7 @@ const handleSearch = async () => {
             variant="small"
             className="font-normal text-inherit text-center font-arabic"
           >
-            حلول التعليمية &copy; 2025
+            المصمم المحترف &copy; 2025
           </Typography>
         </div>
       </footer>

@@ -40,10 +40,10 @@ export function SignIn() {
         {/* Brand Header */}
         <div className="flex items-center justify-center gap-4 mb-8">
           <Typography variant="h3" className="font-arabic text-3xl lg:text-5xl">
-            حلول التعليمية
+            المصمم المحترف
           </Typography>
           <div className="w-12 h-12 lg:w-16 lg:h-16">
-            <img src="/img/logo.jpg" alt="Logo" className="rounded-full" />
+            <img src="/img/logopro.jpg" alt="Logo" className="rounded-full" />
           </div>
         </div>
         {/* Form Container */}

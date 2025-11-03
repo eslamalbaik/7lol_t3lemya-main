@@ -9,7 +9,7 @@ export function Footer({ brandName, brandLink, routes }) {
     <footer className="py-2">
       <div className="text-center">
         <Typography variant="small" className="font-normal text-inherit text-center font-arabic">
-           حلول التعليمية &copy; {year}
+           المصمم المحترف &copy; {year}
         </Typography>
       </div>
     </footer>
