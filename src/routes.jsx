@@ -10,9 +10,9 @@ import {
 } from "@heroicons/react/24/solid";
 import { Home, Management } from "@/pages/dashboard";
 import { SignIn } from "@/pages/auth";
-import AddCertificates from "./pages/dashboard/certificates";
 import AllCertificates from "./pages/dashboard/all_certificates";
 import Clean from "./pages/dashboard/clean";
+import GenerateCertificate from "./pages/dashboard/generate_certificate";
 
 const icon = {
   className: "w-5 h-5 text-inherit",
@@ -41,10 +41,10 @@ export const routes = [
         element: <Management />, 
       },
       {
-        icon: <TableCellsIcon {...icon} />,
-        name: "اضافة الشهادات",
-        path: "/students",
-        element: <AddCertificates />,
+        icon: <RectangleStackIcon {...icon} />,
+        name: "مولد الشهادات",
+        path: "/add-certificate",
+        element: <GenerateCertificate />,
       },
             {
         icon: <XMarkIcon {...icon} />,

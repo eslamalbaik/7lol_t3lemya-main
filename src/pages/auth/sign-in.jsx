@@ -21,7 +21,11 @@ export function SignIn() {
     try {
       const response = await api.post("/auth/login", { username, password });
       const token = response.data.token;
-      Cookies.set("authToken", token, { expires: 7 });
+      // خزّن التوكن في localStorage لاستخدامه عبر interceptor
+      if (token) {
+        try { localStorage.setItem('token', token); } catch (_) {}
+        Cookies.set("authToken", token, { expires: 7 });
+      }
       toast.success("تم تسجيل الدخول بنجاح!");
       navigate("/dashboard");
     } catch (error) {

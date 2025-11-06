@@ -137,11 +137,11 @@ export  function Management() {
 
                   {/* Actions */}
                   <div className="flex justify-center mt-4 gap-4 items-center">
-                    <Link to={cert.certificateUrl} target="_blank">
+                    <Link to={cert.pdfUrl || cert.certificateUrl} target="_blank">
                       <EyeIcon className="h-6 w-6 text-blue-gray-500 hover:text-blue-700" />
                     </Link>
                     <Link
-                      to={getDownloadUrl(cert.certificateUrl)}
+                      to={(cert.pdfUrl || cert.certificateUrl) ? ((cert.pdfUrl || cert.certificateUrl).includes('/upload/') ? getDownloadUrl(cert.pdfUrl || cert.certificateUrl) : (cert.pdfUrl || cert.certificateUrl)) : '#'}
                       target="_blank"
                       rel="noopener noreferrer"
                     >

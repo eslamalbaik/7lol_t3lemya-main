@@ -30,6 +30,8 @@ import CircularProgress from "@mui/material/CircularProgress";
 export default function AllCertificates() {
   const [groups, setGroups] = useState([]);
   const [filter, setFilter] = useState("");
+  const [certQuery, setCertQuery] = useState("");
+  const [certResult, setCertResult] = useState(null);
   const [selected, setSelected] = useState(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [mode, setMode] = useState("view");
@@ -56,8 +58,9 @@ export default function AllCertificates() {
       const allCerts = data.data;
       const map = {};
       allCerts.forEach((c) => {
-        map[c.studentId] = map[c.studentId] || [];
-        map[c.studentId].push(c);
+        const key = c.studentId || c.certificateNumber || "";
+        map[key] = map[key] || [];
+        map[key].push(c);
       });
       
       setGroups(
@@ -86,13 +89,31 @@ export default function AllCertificates() {
   };
 
   const filtered = filter
-    ? groups.filter((g) => g.studentId.includes(filter.trim()))
+    ? groups.filter((g) => (g.studentId || "").includes(filter.trim()))
     : groups;
 
   const openDialogFor = (studentId, certificates, initialMode) => {
     setSelected({ studentId, certificates });
     setMode(initialMode);
     setOpenDialog(true);
+  };
+
+  const searchByCertificateNumber = async () => {
+    const num = certQuery.trim();
+    if (!num) return;
+    try {
+      const { data } = await api.get('/certificates/verify', { params: { certificate: num } });
+      if (data?.valid && data?.certificate) {
+        setCertResult(data.certificate);
+      } else {
+        setCertResult(null);
+        toast.error('لم يتم العثور على شهادة بهذا الرقم');
+      }
+    } catch (err) {
+      console.error(err);
+      setCertResult(null);
+      toast.error('تعذر البحث عن الشهادة');
+    }
   };
 
   const handleDeleteStudent = async (studentId) => {
@@ -172,25 +193,44 @@ export default function AllCertificates() {
             <Typography variant="h2" className="font-arabic flex-1">
               إدارة الطلاب والشهادات
             </Typography>
-            <div className="flex items-center gap-x-2">
-              <Input
-                label="معرف الطالب"
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                className="font-arabic"
-              />
-              <Button
-                onClick={() => {
-                  const grp = groups.find((g) => g.studentId === filter.trim());
-                  if (grp) openDialogFor(grp.studentId, grp.certificates, "view");
-                }}
-                disabled={!filter.trim()}
-                color="blue"
-                className="flex items-center gap-x-2 font-arabic"
-              >
-                <MagnifyingGlassIcon className="h-5 w-5 text-white" />
-                بحث
-              </Button>
+            <div className="flex flex-col md:flex-row items-center gap-2">
+              <div className="flex items-center gap-x-2">
+                <Input
+                  label="معرف الطالب"
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  className="font-arabic"
+                />
+                <Button
+                  onClick={() => {
+                    const grp = groups.find((g) => g.studentId === filter.trim());
+                    if (grp) openDialogFor(grp.studentId, grp.certificates, "view");
+                  }}
+                  disabled={!filter.trim()}
+                  color="blue"
+                  className="flex items-center gap-x-2 font-arabic"
+                >
+                  <MagnifyingGlassIcon className="h-5 w-5 text-white" />
+                  بحث
+                </Button>
+              </div>
+              <div className="flex items-center gap-x-2">
+                <Input
+                  label="رقم الشهادة"
+                  value={certQuery}
+                  onChange={(e) => setCertQuery(e.target.value)}
+                  className="font-arabic"
+                />
+                <Button
+                  onClick={searchByCertificateNumber}
+                  disabled={!certQuery.trim()}
+                  color="green"
+                  className="flex items-center gap-x-2 font-arabic"
+                >
+                  <MagnifyingGlassIcon className="h-5 w-5 text-white" />
+                  تحقق من الشهادة
+                </Button>
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -279,6 +319,23 @@ export default function AllCertificates() {
             </Table>
           </TableContainer>
 
+          {certResult && (
+            <div className="mt-6 border rounded p-4 bg-blue-gray-50/30">
+              <Typography variant="h6" className="font-arabic mb-2">نتيجة البحث برقم الشهادة</Typography>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-right">
+                <div>الاسم: {certResult.studentName || certResult.traineeName || '—'}</div>
+                <div>الدورة: {certResult.courseName || '—'}</div>
+                <div>المدرب: {certResult.trainerName || '—'}</div>
+                <div>رقم الشهادة: {certResult.certificateNumber}</div>
+                <div className="md:col-span-2">
+                  <Button color="blue" onClick={() => window.open(certResult.pdfUrl || certResult.certificateUrl, '_blank')} className="font-arabic mt-2">
+                    عرض الشهادة
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {!loading && pagination.totalPages > 1 && (
             <Box display="flex" justifyContent="center" mt={4}>
               <Stack spacing={2}>
@@ -338,13 +395,18 @@ export default function AllCertificates() {
                 <Box display="flex" justifyContent="center" gap={2} className="mt-4">
                   <IconButton
                     color="blue"
-                    onClick={() => window.open(cert.certificateUrl, '_blank')}
+                    onClick={() => window.open(cert.pdfUrl || cert.certificateUrl, '_blank')}
                   >
                     <EyeIcon className="h-5 w-5" />
                   </IconButton>
                   <IconButton
                     color="green"
-                    onClick={() => window.open(getDownloadUrl(cert.certificateUrl), '_blank')}
+                    onClick={() => {
+                      const url = cert.pdfUrl || cert.certificateUrl;
+                      if (!url) return;
+                      const dl = url.includes('/upload/') ? getDownloadUrl(url) : url;
+                      window.open(dl, '_blank');
+                    }}
                   >
                     <ArrowDownTrayIcon className="h-5 w-5" />
                   </IconButton>

@@ -30,29 +30,48 @@ export default function StudentsInterface() {
   const [selectedAction, setSelectedAction] = useState({ type: "", url: "" });
   const [hasSearched, setHasSearched] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-const handleSearch = async () => {
-  const idTrim = studentId.trim();
-  if (!idTrim) return;
   
-  setHasSearched(true);
-  setIsLoading(true); // بدء التحميل
-  setCertificates([]); // مسح الشهادات القديمة أثناء التحميل
-  
-  try {
-    const { data } = await api.get("/certificates/search", {
-      params: { studentId: idTrim },
-    });
-    setCertificates(data);
-  } catch (err) {
-    console.error("Error fetching certificates:", err);
-    setCertificates([]);
-  } finally {
-    setIsLoading(false); // انتهاء التحميل بغض النظر عن النتيجة
+  function resolveCertificateUrl(cert) {
+    // يختار رابط الشهادة من الحقول المتاحة (Cloudinary)
+    return (
+      cert?.pdfUrl ||
+      cert?.certificateUrl ||
+      cert?.url ||
+      ""
+    );
   }
-};
+  const handleSearch = async () => {
+    const idTrim = studentId.trim();
+    if (!idTrim) return;
+
+    setHasSearched(true);
+    setIsLoading(true);
+    setCertificates([]);
+
+    try {
+      // تحقق من الشهادة عبر رقم الشهادة
+      const { data } = await api.get("/certificates/verify", {
+        params: { certificate: idTrim },
+      });
+      if (data?.valid && data?.certificate) {
+        setCertificates([data.certificate]);
+      } else {
+        setCertificates([]);
+      }
+    } catch (err) {
+      console.error("Error verifying certificate:", err);
+      setCertificates([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   function getDownloadUrl(certificateUrl) {
-    return certificateUrl.replace("/upload/", "/upload/fl_attachment/");
+    if (!certificateUrl) return "";
+    // إدراج fl_attachment لرابط Cloudinary فقط
+    return certificateUrl.includes("/upload/")
+      ? certificateUrl.replace("/upload/", "/upload/fl_attachment/")
+      : certificateUrl;
   }
 
   const handleCertificateAction = (type, url) => {
@@ -92,13 +111,13 @@ const handleSearch = async () => {
                   variant="small"
                   className="text-blue-gray-300 font-arabic"
                 >
-                  ابحث عن شهاداتك باستخدام رقم الطلب
+                  ابحث عن شهادتك باستخدام رقم الشهادة
                 </Typography>
               </div>
             </div>
             <div className="flex items-center gap-4 flex-col md:flex-row">
               <Input
-                label="ادخل رقم الطلب هنا"
+                label="ادخل رقم الشهادة هنا"
                 value={studentId}
                 onChange={(e) => {
                           setStudentId(e.target.value);
@@ -122,8 +141,15 @@ const handleSearch = async () => {
         </Typography> */}
 
         <CardBody className="p-6">
-          {/* View-mode toggle */}
-          {certificates.length > 0 && (
+          {/* رسالة نجاح التحقق */}
+          {hasSearched && !isLoading && certificates.length === 1 && (
+            <div className="mb-4 border border-green-200 bg-green-50 text-green-800 rounded-md p-3 text-right font-arabic">
+              تم التحقق من الشهادة بنجاح ويمكن تنزيلها.
+            </div>
+          )}
+
+          {/* تبديل العرض عند وجود نتائج متعددة (احتياطيًا) */}
+          {certificates.length > 1 && (
             <div className="flex items-center justify-end mb-4 space-x-2">
               <Button
                 size="sm"
@@ -153,19 +179,19 @@ const handleSearch = async () => {
           {/* Prompt / No results */}
       {!studentId.trim() && (
   <Typography className="font-arabic text-center text-gray-500">
-      من فضلك أدخل رقم الطلب للبحث عن الشهادات.
+      من فضلك أدخل رقم الشهادة للبحث.
     </Typography>
   )}
 
   {isLoading && (
     <Typography className="font-arabic text-center text-blue-500">
-      جاري البحث عن الشهادات... انتظر لحظة
+      جاري التحقق من الشهادة... انتظر لحظة
     </Typography>
   )}
 
   {hasSearched && !isLoading && studentId.trim() && certificates.length === 0 && (
     <Typography className="font-arabic text-center text-red-500">
-      لا توجد شهادات لهذا المعرف
+      لا توجد شهادة بهذا الرقم
     </Typography>
   )}
 
@@ -193,13 +219,24 @@ const handleSearch = async () => {
                                 <Typography variant="h6" className="mt-2 font-arabic">
                                   شهادة {idx + 1}
                                 </Typography>
+                    {/* Cloudinary URL */}
+                    {resolveCertificateUrl(cert) && (
+                      <a
+                        href={resolveCertificateUrl(cert)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-600 underline break-all text-sm mt-2 text-center"
+                      >
+                        {resolveCertificateUrl(cert)}
+                      </a>
+                    )}
                     {/* Action Buttons */}
                     <div className="flex justify-center gap-4 w-full mt-2">
                       <IconButton
                         color="blue"
                         variant="text"
                         onClick={() =>
-                          handleCertificateAction("view", cert.certificateUrl)
+                          handleCertificateAction("view", resolveCertificateUrl(cert))
                         }
                       >
                         <EyeIcon className="h-5 w-5" />
@@ -211,7 +248,7 @@ const handleSearch = async () => {
                         onClick={() =>
                           handleCertificateAction(
                             "download",
-                            getDownloadUrl(cert.certificateUrl)
+                            getDownloadUrl(resolveCertificateUrl(cert))
                           )
                         }
                       >
