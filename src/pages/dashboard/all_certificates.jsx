@@ -38,7 +38,7 @@ export default function AllCertificates() {
   const [mode, setMode] = useState("view");
   const [deletingStud, setDeletingStud] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [selectedStudents, setSelectedStudents] = useState([]);
+  const [selectedGroupKeys, setSelectedGroupKeys] = useState([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   
   // Pagination state
@@ -55,29 +55,46 @@ export default function AllCertificates() {
 
   const fetchCertificates = async () => {
     setLoading(true);
+    let mappedGroups = [];
     try {
-      const { data } = await api.get(`/certificates?page=${pagination.page}&limit=${pagination.limit}`);
-      
-      const allCerts = data.data;
-      const map = {};
-      allCerts.forEach((c) => {
-        const key = c.studentId || c.certificateNumber || "";
-        map[key] = map[key] || [];
-        map[key].push(c);
-      });
-      
-      setGroups(
-        Object.entries(map).map(([id, certs]) => ({
-          studentId: id,
-          certCount: certs.length,
-          certificates: certs,
-        }))
+      const { data } = await api.get(
+        `/certificates?page=${pagination.page}&limit=${pagination.limit}`
       );
-      
-      setPagination(prev => ({
+
+      const allCerts = data.data || [];
+      const map = new Map();
+      allCerts.forEach((c) => {
+        const key = c.studentId || c.certificateNumber || c._id;
+        if (!map.has(key)) {
+          map.set(key, {
+            groupKey: key,
+            studentId: c.studentId || null,
+            displayId: c.studentId || c.certificateNumber || c._id,
+            certificates: [],
+          });
+        }
+        map.get(key).certificates.push(c);
+      });
+
+      mappedGroups = Array.from(map.values()).map((entry) => ({
+        ...entry,
+        certCount: entry.certificates.length,
+      }));
+
+      setGroups(mappedGroups);
+      setSelected((prev) =>
+        prev
+          ? mappedGroups.find((g) => g.groupKey === prev.groupKey) || prev
+          : prev
+      );
+      setSelectedGroupKeys((prev) =>
+        prev.filter((key) => mappedGroups.some((g) => g.groupKey === key))
+      );
+
+      setPagination((prev) => ({
         ...prev,
         total: data.pagination.total,
-        totalPages: data.pagination.totalPages
+        totalPages: data.pagination.totalPages,
       }));
     } catch (err) {
       console.error(err);
@@ -85,46 +102,51 @@ export default function AllCertificates() {
     } finally {
       setLoading(false);
     }
+    return mappedGroups;
   };
 
   const handlePageChange = (event, newPage) => {
     setPagination(prev => ({ ...prev, page: newPage }));
   };
 
-  const filtered = useMemo(() => (
-    filter
-      ? groups.filter((g) => (g.studentId || "").includes(filter.trim()))
-      : groups
-  ), [groups, filter]);
+  const filtered = useMemo(
+    () =>
+      filter
+        ? groups.filter((g) =>
+            (g.displayId || "").toString().includes(filter.trim())
+          )
+        : groups,
+    [groups, filter]
+  );
 
   useEffect(() => {
-    setSelectedStudents((prev) =>
-      prev.filter((id) => filtered.some((g) => g.studentId === id))
+    setSelectedGroupKeys((prev) =>
+      prev.filter((key) => filtered.some((g) => g.groupKey === key))
     );
   }, [filtered]);
 
   const isAllSelected =
     filtered.length > 0 &&
-    filtered.every((g) => selectedStudents.includes(g.studentId));
+    filtered.every((g) => selectedGroupKeys.includes(g.groupKey));
 
   const toggleSelectAll = (event) => {
     if (event.target.checked) {
-      setSelectedStudents(filtered.map((g) => g.studentId));
+      setSelectedGroupKeys(filtered.map((g) => g.groupKey));
     } else {
-      setSelectedStudents([]);
+      setSelectedGroupKeys([]);
     }
   };
 
-  const toggleSelectStudent = (studentId) => {
-    setSelectedStudents((prev) =>
-      prev.includes(studentId)
-        ? prev.filter((id) => id !== studentId)
-        : [...prev, studentId]
+  const toggleSelectStudent = (groupKey) => {
+    setSelectedGroupKeys((prev) =>
+      prev.includes(groupKey)
+        ? prev.filter((key) => key !== groupKey)
+        : [...prev, groupKey]
     );
   };
 
-  const openDialogFor = (studentId, certificates, initialMode) => {
-    setSelected({ studentId, certificates });
+  const openDialogFor = (group, initialMode) => {
+    setSelected(group);
     setMode(initialMode);
     setOpenDialog(true);
   };
@@ -147,16 +169,55 @@ export default function AllCertificates() {
     }
   };
 
-  const handleDeleteStudent = async (studentId) => {
+  const deleteGroupOnServer = async (group) => {
+    const { studentId, certificates } = group || {};
+
+    if (studentId) {
+      await api.delete(`/certificates/student/${studentId}`);
+      return { success: true };
+    }
+
+    if (!certificates?.length) {
+      return { success: false, message: "لا توجد شهادات مرتبطة بهذا السجل" };
+    }
+
+    const results = await Promise.allSettled(
+      certificates.map((cert) => api.delete(`/certificates/${cert._id}`))
+    );
+
+    const failedCount = results.filter((r) => r.status === "rejected").length;
+
+    if (failedCount > 0) {
+      return {
+        success: false,
+        message: `تعذر حذف ${failedCount} شهادة مرتبطة بهذا الطالب`,
+      };
+    }
+
+    return { success: true };
+  };
+
+  const handleDeleteStudent = async (group) => {
+    if (!group) return;
     if (!window.confirm("هل أنت متأكد من حذف هذا الطالب وكل شهاداته؟")) return;
     setDeletingStud(true);
     try {
-      await api.delete(`/certificates/student/${studentId}`);
-      setGroups((prev) => prev.filter((g) => g.studentId !== studentId));
-      setOpenDialog(false);
-      setSelectedStudents((prev) => prev.filter((id) => id !== studentId));
+      const result = await deleteGroupOnServer(group);
+      if (!result.success) {
+        toast.error(result.message || "تعذر حذف الطالب، حاول لاحقًا");
+        return;
+      }
+
+      setGroups((prev) => prev.filter((g) => g.groupKey !== group.groupKey));
+      setSelectedGroupKeys((prev) =>
+        prev.filter((key) => key !== group.groupKey)
+      );
+      if (selected?.groupKey === group.groupKey) {
+        setOpenDialog(false);
+        setSelected(null);
+      }
       toast.success("تم حذف الطالب بنجاح");
-      fetchCertificates(); // Refresh data
+      fetchCertificates();
     } catch (err) {
       console.error(err);
       toast.error("حدث خطأ أثناء حذف الطالب");
@@ -166,33 +227,56 @@ export default function AllCertificates() {
   };
 
   const handleDeleteSelected = async () => {
-    if (selectedStudents.length === 0) return;
+    if (selectedGroupKeys.length === 0) return;
     if (!window.confirm("هل تريد حذف كل الطلاب المحددين وشهاداتهم؟")) return;
 
     setBulkDeleting(true);
-    const idsToDelete = [...selectedStudents];
+    const keysToDelete = [...selectedGroupKeys];
+    const groupsToDelete = keysToDelete
+      .map((key) => groups.find((g) => g.groupKey === key))
+      .filter(Boolean);
 
     try {
-      const results = await Promise.allSettled(
-        idsToDelete.map((id) => api.delete(`/certificates/student/${id}`))
-      );
+      const successKeys = [];
+      const failedMessages = [];
 
-      const succeededIds = results
-        .map((res, idx) => (res.status === "fulfilled" ? idsToDelete[idx] : null))
-        .filter(Boolean);
-      const failedCount = results.filter((r) => r.status === "rejected").length;
-
-      if (succeededIds.length > 0) {
-        setGroups((prev) => prev.filter((g) => !succeededIds.includes(g.studentId)));
-        setSelectedStudents((prev) => prev.filter((id) => !succeededIds.includes(id)));
-        toast.success(`تم حذف ${succeededIds.length} طالب${succeededIds.length === 1 ? "" : "ًا"} بنجاح`);
+      for (const group of groupsToDelete) {
+        try {
+          const result = await deleteGroupOnServer(group);
+          if (result.success) {
+            successKeys.push(group.groupKey);
+          } else {
+            failedMessages.push(result.message || group.displayId || group.groupKey);
+          }
+        } catch (err) {
+          console.error(err);
+          failedMessages.push(group.displayId || group.groupKey);
+        }
       }
 
-      if (failedCount > 0) {
-        toast.error(`تعذر حذف ${failedCount} طالب${failedCount === 1 ? " " : "ًا"}`);
+      if (successKeys.length > 0) {
+        setGroups((prev) => prev.filter((g) => !successKeys.includes(g.groupKey)));
+        setSelectedGroupKeys((prev) =>
+          prev.filter((key) => !successKeys.includes(key))
+        );
+        if (selected && successKeys.includes(selected.groupKey)) {
+          setOpenDialog(false);
+          setSelected(null);
+        }
+        toast.success(
+          `تم حذف ${successKeys.length} طالب${
+            successKeys.length === 1 ? "" : "ًا"
+          } بنجاح`
+        );
       }
 
-      if (succeededIds.length > 0) {
+      if (failedMessages.length > 0) {
+        toast.error(
+          `تعذر حذف ${failedMessages.length} طالب، يرجى المحاولة لاحقًا`
+        );
+      }
+
+      if (successKeys.length > 0) {
         fetchCertificates();
       }
     } catch (err) {
@@ -204,13 +288,18 @@ export default function AllCertificates() {
   };
 
   const onUploaded = (newCerts) => {
-    setSelected((prev) => ({
-      ...prev,
-      certificates: [...newCerts, ...prev.certificates],
-    }));
+    setSelected((prev) =>
+      prev
+        ? {
+            ...prev,
+            certCount: prev.certCount + newCerts.length,
+            certificates: [...newCerts, ...prev.certificates],
+          }
+        : prev
+    );
     setGroups((prev) =>
       prev.map((g) =>
-        g.studentId === selected.studentId
+        selected && g.groupKey === selected.groupKey
           ? {
               ...g,
               certCount: g.certCount + newCerts.length,
@@ -237,25 +326,33 @@ export default function AllCertificates() {
 
   const handleDeleteCert = async (certId) => {
     if (!window.confirm("هل تريد حذف هذه الشهادة؟")) return;
+    if (!selected?.certificates) return;
     try {
       await api.delete(`/certificates/${certId}`);
       const updatedCerts = selected.certificates.filter((c) => c._id !== certId);
       if (updatedCerts.length === 0) {
         setGroups((prev) =>
-          prev.filter((g) => g.studentId !== selected.studentId)
+          prev.filter((g) => g.groupKey !== selected.groupKey)
+        );
+        setSelectedGroupKeys((prev) =>
+          prev.filter((key) => key !== selected.groupKey)
         );
         setOpenDialog(false);
+        setSelected(null);
       } else {
-        setSelected((prev) => ({ ...prev, certificates: updatedCerts }));
+        setSelected((prev) =>
+          prev ? { ...prev, certCount: prev.certCount - 1, certificates: updatedCerts } : prev
+        );
         setGroups((prev) =>
           prev.map((g) =>
-            g.studentId === selected.studentId
+            g.groupKey === selected.groupKey
               ? { ...g, certCount: g.certCount - 1, certificates: updatedCerts }
               : g
           )
         );
       }
       toast.success("تم حذف الشهادة");
+      fetchCertificates();
     } catch (err) {
       console.error(err);
       toast.error("حدث خطأ أثناء حذف الشهادة");
@@ -284,8 +381,10 @@ export default function AllCertificates() {
                 />
                 <Button
                   onClick={() => {
-                    const grp = groups.find((g) => g.studentId === filter.trim());
-                    if (grp) openDialogFor(grp.studentId, grp.certificates, "view");
+                    const grp = groups.find(
+                      (g) => (g.displayId || "").toString() === filter.trim()
+                    );
+                    if (grp) openDialogFor(grp, "view");
                   }}
                   disabled={!filter.trim()}
                   color="blue"
@@ -315,7 +414,7 @@ export default function AllCertificates() {
               <Button
                 color="red"
                 variant="outlined"
-                disabled={selectedStudents.length === 0 || bulkDeleting}
+                disabled={selectedGroupKeys.length === 0 || bulkDeleting}
                 onClick={handleDeleteSelected}
                 className="font-arabic"
               >
@@ -335,7 +434,7 @@ export default function AllCertificates() {
                       color="primary"
                       checked={isAllSelected}
                       indeterminate={
-                        selectedStudents.length > 0 && !isAllSelected
+                        selectedGroupKeys.length > 0 && !isAllSelected
                       }
                       onChange={toggleSelectAll}
                     />
@@ -360,31 +459,31 @@ export default function AllCertificates() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={3} align="center">
+                  <TableCell colSpan={4} align="center">
                       <CircularProgress />
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={3} align="center">
+                  <TableCell colSpan={4} align="center">
                       لا توجد بيانات للعرض
                     </TableCell>
                   </TableRow>
                 ) : (
                   filtered.map((g) => (
                     <TableRow 
-                      key={g.studentId}
+                      key={g.groupKey}
                       hover
                       sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
                     >
                       <TableCell padding="checkbox" align="center">
                         <Checkbox
                           color="primary"
-                          checked={selectedStudents.includes(g.studentId)}
-                          onChange={() => toggleSelectStudent(g.studentId)}
+                          checked={selectedGroupKeys.includes(g.groupKey)}
+                          onChange={() => toggleSelectStudent(g.groupKey)}
                         />
                       </TableCell>
-                      <TableCell align="center">{g.studentId}</TableCell>
+                      <TableCell align="center">{g.displayId}</TableCell>
                       <TableCell align="center">{g.certCount}</TableCell>
                       <TableCell align="center">
                         <Box display="flex" justifyContent="center" gap={1}>
@@ -392,7 +491,7 @@ export default function AllCertificates() {
                             variant="outlined"
                             color="blue"
                             onClick={() =>
-                              openDialogFor(g.studentId, g.certificates, "view")
+                              openDialogFor(g, "view")
                             }
                             className="font-arabic"
                           >
@@ -401,7 +500,7 @@ export default function AllCertificates() {
                           <Button
                             variant="outlined"
                             color="red"
-                            onClick={() => handleDeleteStudent(g.studentId)}
+                            onClick={() => handleDeleteStudent(g)}
                             disabled={deletingStud}
                             className="font-arabic"
                           >
@@ -495,18 +594,24 @@ export default function AllCertificates() {
       <Dialog
         open={openDialog}
         size="lg"
-        handler={() => setOpenDialog(false)}
+        handler={() => {
+          setOpenDialog(false);
+          setSelected(null);
+        }}
         className="font-arabic"
       >
         <DialogHeader className="bg-blue-gray-50">
           <Typography variant="h5" className="font-arabic">
-            شهادات الطالب: {selected?.studentId}
+            شهادات الطالب: {selected?.displayId || "—"}
           </Typography>
           <IconButton
             variant="text"
             color="gray"
             className="ml-auto"
-            onClick={() => setOpenDialog(false)}
+            onClick={() => {
+              setOpenDialog(false);
+              setSelected(null);
+            }}
           >
             <XMarkIcon className="h-5 w-5" />
           </IconButton>
@@ -519,7 +624,7 @@ export default function AllCertificates() {
             />
           )}
           <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-            {selected?.certificates.map((cert, idx) => (
+            {selected?.certificates?.map((cert, idx) => (
               <Card
                 key={cert._id}
                 className="relative border rounded-lg p-4 flex flex-col gap-3 hover:shadow-lg transition-shadow bg-white"
@@ -574,7 +679,7 @@ export default function AllCertificates() {
                 </Box>
               </Card>
             ))}
-            {selected?.certificates.length === 0 && (
+            {selected?.certificates?.length === 0 && (
               <Typography className="text-center text-gray-500 py-8">
                 لا توجد شهادات لهذا الطالب
               </Typography>
@@ -585,7 +690,10 @@ export default function AllCertificates() {
           <Button
             variant="gradient"
             color="blue"
-            onClick={() => setOpenDialog(false)}
+            onClick={() => {
+              setOpenDialog(false);
+              setSelected(null);
+            }}
             className="font-arabic"
           >
             إغلاق
