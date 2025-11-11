@@ -29,10 +29,10 @@ export function Sidenav({ brandImg, brandName, routes }) {
       >
         <Link to="/" className="py-6 px-8 text-center flex items-center">
         <div className="flex gap-2">
-          <div className="w-8 flex items-center justify-center">
-            <img src="/img/logopro.jpg"/>
+          <div className="flex items-center mr-10 justify-center">
+            <img src="/img/logopro.jpg" className="w-[150px]"/>
           </div>
-          <Typography className="text-2xl font-arabic font-bold" color="blue">المصمم المحترف</Typography>
+          {/* <Typography className="text-2xl font-arabic font-bold" color="blue">المصمم المحترف</Typography> */}
         </div>
         </Link>
         <IconButton

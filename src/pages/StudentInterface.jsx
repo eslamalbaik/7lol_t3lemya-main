@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Card,
   CardBody,
@@ -74,12 +74,119 @@ export default function StudentsInterface() {
       : certificateUrl;
   }
 
+function triggerDownload(certificateUrl, filename = "certificate.pdf") {
+  const finalUrl = getDownloadUrl(certificateUrl);
+  if (!finalUrl) return;
+  const link = document.createElement("a");
+  link.href = finalUrl;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
   const handleCertificateAction = (type, url) => {
+    if (!url) return;
     setSelectedAction({ type, url });
     setOpenDisclaimer(true);
   };
 
+  const statusCard = useMemo(() => {
+    if (!hasSearched) return null;
+    if (isLoading) {
+      return (
+        <Card className="mb-4 border border-blue-200 bg-blue-50/70">
+          <CardBody className="flex items-center justify-between gap-4 font-arabic">
+            <Typography className="text-blue-700">جاري التحقق من الشهادة...</Typography>
+            <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          </CardBody>
+        </Card>
+      );
+    }
+
+    if (certificates.length === 1) {
+      const cert = certificates[0];
+      return (
+        <Card className="mb-4 border border-green-200 bg-green-50/70 shadow-sm">
+          <CardBody className="grid gap-3 md:grid-cols-4 font-arabic text-right">
+            <div className="md:col-span-4 flex flex-col items-center gap-2 text-center">
+              <img
+                src="/img/ver12.webp"
+                alt="تم التحقق"
+                className="w-16 h-16"
+              />
+              <Typography
+                variant="h4"
+                className="text-green-700 my-2"
+                style={{ fontFamily: '"Readex Pro", sans-serif', fontWeight: 500 }}
+              >
+                تم التحقق من الشهادة بنجاح
+              </Typography>
+            </div>
+            <div className="bg-white/80 rounded-lg p-3 border border-green-100">
+              <Typography color="gray" className="text-sm"                 style={{ fontFamily: '"Readex Pro", sans-serif', fontWeight: 500 }}
+              >
+                رقم الشهادة
+              </Typography>
+              <Typography className="font-semibold text-blue-gray-900"                 style={{ fontFamily: '"Readex Pro", sans-serif', fontWeight: 500 }}
+              >
+                {cert.certificateNumber || studentId}
+              </Typography>
+            </div>
+            <div className="bg-white/80 rounded-lg p-3 border border-green-100"                 style={{ fontFamily: '"Readex Pro", sans-serif', fontWeight: 500 }}
+            >
+              <Typography color="gray" className="text-sm"                 style={{ fontFamily: '"Readex Pro", sans-serif', fontWeight: 500 }}
+              >
+                اسم المتدرب
+              </Typography>
+              <Typography className="font-semibold text-blue-gray-900"                 style={{ fontFamily: '"Readex Pro", sans-serif', fontWeight: 500 }}
+              >
+                {cert.studentName || cert.traineeName || "—"}
+              </Typography>
+            </div>
+            <div className="bg-white/80 rounded-lg p-3 border border-green-100">
+              <Typography color="gray" className="text-sm"                 style={{ fontFamily: '"Readex Pro", sans-serif', fontWeight: 500 }}
+              >
+                اسم الدورة
+              </Typography>
+              <Typography className="font-semibold text-blue-gray-900"                 style={{ fontFamily: '"Readex Pro", sans-serif', fontWeight: 500 }}
+              >
+                {cert.courseName || "—"}
+              </Typography>
+            </div>
+            <div className="bg-white/80 rounded-lg p-3 border border-green-100">
+              <Typography color="gray" className="text-sm"                 style={{ fontFamily: '"Readex Pro", sans-serif', fontWeight: 500 }}
+              >
+                اسم المدرب
+              </Typography>
+              <Typography className="font-semibold text-blue-gray-900"                 style={{ fontFamily: '"Readex Pro", sans-serif', fontWeight: 500 }}
+              >
+                {cert.trainerName || "—"}
+              </Typography>
+            </div>
+          </CardBody>
+        </Card>
+      );
+    }
+
+    if (certificates.length === 0 && studentId.trim()) {
+      return (
+        <Card className="mb-4 border border-red-200 bg-red-50/70">
+          <CardBody className="font-arabic text-right text-red-600">
+            لم يتم العثور على شهادة بهذا الرقم. تأكد من صحة الرقم وحاول مرة أخرى.
+          </CardBody>
+        </Card>
+      );
+    }
+
+    return null;
+  }, [hasSearched, isLoading, certificates, studentId]);
+
   const proceedWithAction = () => {
+    if (!selectedAction.url) {
+      setOpenDisclaimer(false);
+      return;
+    }
     window.open(selectedAction.url, "_blank");
     setOpenDisclaimer(false);
   };
@@ -87,10 +194,10 @@ export default function StudentsInterface() {
   return (
     <>
       {/* Header with Logo & Title */}
-      <div className="relative h-72 w-full n rounded-xl bg-cover bg-center bg-[url('/img/background-image.png')]">
-        <div className="absolute inset-0 bg-gray-900/75" />
+      <div className="relative h-72 w-full n rounded-xl bg-cover bg-center mt-48">
+        <div className="absolute inset-0 bg-white-900/75" />
         <div className="absolute inset-0 mb-32 flex flex-col justify-center items-center text-center p-4">
-          <Avatar src="/img/logopro.jpg" alt="Logo" size="xl" variant="circular" />
+          <img src="/img/logopro.jpg" alt="Logo" />
           <Typography variant="h5" className="mt-4 text-white font-arabic">
             المصمم المحترف
           </Typography>
@@ -104,7 +211,7 @@ export default function StudentsInterface() {
             <div className="flex items-center gap-4 flex-1">
               <Avatar src="/img/certificate.png" size="xl" variant="rounded" />
               <div>
-                <Typography variant="h2" className="font-arabic">
+                <Typography variant="h2" className="font-arabic text-[#1C1CB0]">
                   منصة استلام الشهادات
                 </Typography>
                 <Typography
@@ -126,8 +233,8 @@ export default function StudentsInterface() {
               />
               <Button
                 onClick={handleSearch}
-                className="font-arabic min-w-[140px] px-4 py-2 flex items-center justify-center gap-2"
-                color="blue"
+                className="font-arabic min-w-[140px] px-4 py-2 bg-[#1C1CB0] text-white flex items-center justify-center gap-2"
+             
               >
                 <MagnifyingGlassIcon className="h-5 w-5 text-white" />
                 بحث
@@ -141,12 +248,7 @@ export default function StudentsInterface() {
         </Typography> */}
 
         <CardBody className="p-6">
-          {/* رسالة نجاح التحقق */}
-          {hasSearched && !isLoading && certificates.length === 1 && (
-            <div className="mb-4 border border-green-200 bg-green-50 text-green-800 rounded-md p-3 text-right font-arabic">
-              تم التحقق من الشهادة بنجاح ويمكن تنزيلها.
-            </div>
-          )}
+          {statusCard}
 
           {/* تبديل العرض عند وجود نتائج متعددة (احتياطيًا) */}
           {certificates.length > 1 && (
@@ -155,7 +257,7 @@ export default function StudentsInterface() {
                 size="sm"
                 className={`font-arabic ${
                   viewMode === "cards"
-                    ? "bg-blue-500 text-white"
+                    ? "bg-[##1C1CB0] text-white"
                     : "bg-gray-400"
                 }`}
                 onClick={() => setViewMode("cards")}
@@ -166,7 +268,7 @@ export default function StudentsInterface() {
                 size="sm"
                 className={`font-arabic ${
                   viewMode === "table"
-                    ? "bg-blue-500 text-white"
+                    ? "bg-[##1C1CB0] text-white"
                     : "bg-gray-400"
                 }`}
                 onClick={() => setViewMode("table")}
@@ -177,61 +279,52 @@ export default function StudentsInterface() {
           )}
 
           {/* Prompt / No results */}
-      {!studentId.trim() && (
-  <Typography className="font-arabic text-center text-gray-500">
-      من فضلك أدخل رقم الشهادة للبحث.
-    </Typography>
-  )}
-
-  {isLoading && (
-    <Typography className="font-arabic text-center text-blue-500">
-      جاري التحقق من الشهادة... انتظر لحظة
-    </Typography>
-  )}
-
-  {hasSearched && !isLoading && studentId.trim() && certificates.length === 0 && (
-    <Typography className="font-arabic text-center text-red-500">
-      لا توجد شهادة بهذا الرقم
-    </Typography>
-  )}
+          {!hasSearched && (
+            <Typography className="font-arabic text-center text-gray-500">
+              أدخل رقم الشهادة للبدء في التحقق.
+            </Typography>
+          )}
 
           {/* Cards View */}
           {certificates.length > 0 && viewMode === "cards" && (
             <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
              {certificates.map((cert, idx) => (
-                <Card key={cert._id} className="hover:shadow-lg transition-shadow">
-                  <CardBody className="flex flex-col items-center p-4">
-                    {/* Top row with date and badge */}
-                    <div className="w-full flex justify-between items-start mb-2">
+                <Card key={cert._id || idx} className="hover:shadow-lg transition-shadow">
+                  <CardBody className="flex flex-col items-stretch p-5 gap-4">
+                    <div className="flex justify-between items-start">
                       <Typography variant="small" className="text-gray-500 font-arabic">
-                        {new Date(cert.createdAt).toLocaleDateString("ar-EG")}
+                        {cert.createdAt
+                          ? new Date(cert.createdAt).toLocaleDateString("ar-EG")
+                          : "—"}
                       </Typography>
                       <Typography
                         variant="small"
-                        className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full"
+                        className="bg-blue-100 text-[##1C1CB0] px-2 py-1 rounded-full"
                       >
-                        #{idx + 1}
+                        شهادة #{idx + 1}
                       </Typography>
                     </div>
-
-                    {/* Certificate Icon */}
-                    <DocumentTextIcon className="h-16 w-16 text-blue-500 my-4" />
-                                <Typography variant="h6" className="mt-2 font-arabic">
-                                  شهادة {idx + 1}
-                                </Typography>
-                    {/* Cloudinary URL */}
-                    {resolveCertificateUrl(cert) && (
-                      <a
-                        href={resolveCertificateUrl(cert)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-blue-600 underline break-all text-sm mt-2 text-center"
-                      >
-                        {resolveCertificateUrl(cert)}
-                      </a>
-                    )}
-                    {/* Action Buttons */}
-                    <div className="flex justify-center gap-4 w-full mt-2">
+                    <div className="flex flex-col items-center gap-2">
+                      <DocumentTextIcon className="h-14 w-14 text-blue-500" />
+                      <Typography variant="h6" className="font-arabic text-blue-gray-900">
+                        {cert.studentName || cert.traineeName || "—"}
+                      </Typography>
+                    </div>
+                    <div className="bg-blue-gray-50/60 border border-blue-gray-100 rounded-xl p-4 text-right font-arabic">
+                      <div className="text-sm text-blue-gray-600">اسم الدورة</div>
+                      <div className="font-semibold text-blue-gray-900">
+                        {cert.courseName || "—"}
+                      </div>
+                      {cert.trainerName && (
+                        <div className="mt-3">
+                          <div className="text-sm text-blue-gray-600">اسم المدرب</div>
+                          <div className="font-semibold text-blue-gray-900">
+                            {cert.trainerName}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex justify-center gap-4 w-full mt-auto">
                       <IconButton
                         color="blue"
                         variant="text"
@@ -246,15 +339,14 @@ export default function StudentsInterface() {
                         color="green"
                         variant="text"
                         onClick={() =>
-                          handleCertificateAction(
-                            "download",
-                            getDownloadUrl(resolveCertificateUrl(cert))
+                          triggerDownload(
+                            resolveCertificateUrl(cert),
+                            `certificate-${cert.certificateNumber || idx + 1}.pdf`
                           )
                         }
                       >
                         <ArrowDownTrayIcon className="h-5 w-5" />
                       </IconButton>
-
                     </div>
                   </CardBody>
                 </Card>
@@ -284,7 +376,7 @@ export default function StudentsInterface() {
                       <div className="flex justify-center space-x-4">
                         <IconButton
                           onClick={() =>
-                            handleCertificateAction("view", cert.certificateUrl)
+                            handleCertificateAction("view", resolveCertificateUrl(cert))
                           }
                           className="h-6 w-6 text-blue-gray-500 hover:text-blue-700 bg-white"
                         >
@@ -292,9 +384,9 @@ export default function StudentsInterface() {
                         </IconButton>
                         <IconButton
                           onClick={() =>
-                            handleCertificateAction(
-                              "download",
-                              getDownloadUrl(cert.certificateUrl)
+                            triggerDownload(
+                              resolveCertificateUrl(cert),
+                              `certificate-${cert.certificateNumber || idx + 1}.pdf`
                             )
                           }
                           className="h-6 w-6 text-green-500 hover:text-green-700 bg-white"
