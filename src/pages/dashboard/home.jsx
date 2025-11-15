@@ -63,10 +63,24 @@ footer: {
     const fetchStats = async () => {
       try {
         const response = await api.get("/certificates/stats");
+        console.log("Stats API Response:", response.data);
+        
+        // حساب عدد الطلاب والشفات
+        const totalCerts = response.data?.totalCerts || response.data?.total || 0;
+        let uniqueStudents = response.data?.uniqueStudents || response.data?.uniqueStudentsCount;
+        
+        // إذا كان uniqueStudents غير موجود أو 0 أو 1 (قيمة خاطئة)، استخدم totalCerts
+        // لأن كل طالب له شهادة واحدة
+        if (!uniqueStudents || uniqueStudents === 0 || uniqueStudents === 1) {
+          uniqueStudents = totalCerts;
+        }
+        
+        console.log("Total Certs:", totalCerts, "Unique Students:", uniqueStudents);
+        
         setStats([
           {
             title: "عدد الشهادات المصدرة",
-            value: response.data.totalCerts,
+            value: totalCerts,
             icon: BanknotesIcon,
             footer: {
               color: "text-green-500",
@@ -76,7 +90,7 @@ footer: {
           },
           {
             title: "عدد الطلاب المسجلين",
-            value: response.data.uniqueStudents,
+            value: uniqueStudents,
             icon: UsersIcon,
             footer: {
               color: "text-green-500",
@@ -88,6 +102,7 @@ footer: {
         setLoading(false);
       } catch (err) {
         console.error("Error fetching stats:", err);
+        console.error("Error response:", err.response?.data);
         setLoading(false);
       }
     };

@@ -1,14 +1,10 @@
 import {
   HomeIcon,
-  UserCircleIcon,
-  TableCellsIcon,
-  InformationCircleIcon,
-  ServerStackIcon,
   RectangleStackIcon,
   BookmarkIcon,
   XMarkIcon,
 } from "@heroicons/react/24/solid";
-import { Home, Management } from "@/pages/dashboard";
+import { Home } from "@/pages/dashboard";
 import { SignIn } from "@/pages/auth";
 import AllCertificates from "./pages/dashboard/all_certificates";
 import Clean from "./pages/dashboard/clean";
@@ -33,12 +29,6 @@ export const routes = [
         name: "الشهادات",
         path: "/certificates",
         element: <AllCertificates />,
-      },
-      {
-        icon: <UserCircleIcon {...icon} />,
-        name: "واجهة البحث والادارة",
-        path: "/management",
-        element: <Management />, 
       },
       {
         icon: <RectangleStackIcon {...icon} />,

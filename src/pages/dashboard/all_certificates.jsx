@@ -8,11 +8,13 @@ import {
 import {
   MagnifyingGlassIcon, EyeIcon, ArrowDownTrayIcon,
   TrashIcon, DocumentTextIcon, XMarkIcon,
+  DocumentArrowDownIcon,
 } from "@heroicons/react/24/solid";
 import { Link } from "react-router-dom";
 import Upload from "@/widgets/Upload";
 import api from "@/configs/api";
 import { toast } from "react-toastify";
+import * as XLSX from "xlsx";
 
 // Material-UI imports
 import Table from "@mui/material/Table";
@@ -31,7 +33,7 @@ import Checkbox from "@mui/material/Checkbox";
 export default function AllCertificates() {
   const [groups, setGroups] = useState([]);
   const [filter, setFilter] = useState("");
-  const [certQuery, setCertQuery] = useState("");
+  const [nameFilter, setNameFilter] = useState("");
   const [certResult, setCertResult] = useState(null);
   const [selected, setSelected] = useState(null);
   const [openDialog, setOpenDialog] = useState(false);
@@ -70,8 +72,13 @@ export default function AllCertificates() {
             groupKey: key,
             studentId: c.studentId || null,
             displayId: c.studentId || c.certificateNumber || c._id,
+            studentName: c.studentName || c.traineeName || null,
             certificates: [],
           });
+        }
+        // تحديث اسم الطالب من آخر شهادة إذا كان غير موجود
+        if (!map.get(key).studentName && (c.studentName || c.traineeName)) {
+          map.get(key).studentName = c.studentName || c.traineeName;
         }
         map.get(key).certificates.push(c);
       });
@@ -110,13 +117,19 @@ export default function AllCertificates() {
   };
 
   const filtered = useMemo(
-    () =>
-      filter
-        ? groups.filter((g) =>
-            (g.displayId || "").toString().includes(filter.trim())
-          )
-        : groups,
-    [groups, filter]
+    () => {
+      if (filter || nameFilter) {
+        const searchTerm = filter.trim().toLowerCase();
+        const nameSearchTerm = nameFilter.trim().toLowerCase();
+        return groups.filter((g) => {
+          const displayIdMatch = searchTerm ? (g.displayId || "").toString().toLowerCase().includes(searchTerm) : true;
+          const nameMatch = nameSearchTerm ? (g.studentName || "").toLowerCase().includes(nameSearchTerm) : true;
+          return displayIdMatch && nameMatch;
+        });
+      }
+      return groups;
+    },
+    [groups, filter, nameFilter]
   );
 
   useEffect(() => {
@@ -151,13 +164,259 @@ export default function AllCertificates() {
     setOpenDialog(true);
   };
 
-  const searchByCertificateNumber = async () => {
-    const num = certQuery.trim();
+  const handleSearchByName = async () => {
+    const searchName = nameFilter.trim();
+    if (!searchName) return;
+
+    // البحث في البيانات المحملة أولاً بالاسم
+    const matchingGroups = groups.filter(
+      (g) => (g.studentName || "").toLowerCase().includes(searchName.toLowerCase())
+    );
+
+      if (matchingGroups.length > 0) {
+        if (matchingGroups.length === 1) {
+          openDialogFor(matchingGroups[0], "view");
+          toast.success(`تم العثور على طالب: ${matchingGroups[0].studentName}`);
+        } else {
+          // إذا كان هناك أكثر من طالب، فلنفتح أول واحد ونظهر رسالة
+          openDialogFor(matchingGroups[0], "view");
+          toast.success(`تم العثور على ${matchingGroups.length} طالب، يعرض الأول`);
+          // تصفية القائمة لإظهار المطابقين فقط
+          // الـ nameFilter موجود بالفعل لذلك التصفية ستحدث تلقائياً
+        }
+        return;
+      }
+
+    // إذا لم يتم العثور محلياً، البحث في جميع الصفحات
+    toast.info("جارٍ البحث في جميع البيانات...");
+    
+    // محاولة البحث عبر جميع الصفحات
+    try {
+      let allFoundCerts = [];
+      let currentPage = 1;
+      let hasMore = true;
+
+      while (hasMore && currentPage <= 10) { // حد أقصى 10 صفحات
+        try {
+          const { data } = await api.get(`/certificates?page=${currentPage}&limit=100`);
+          const pageCerts = data.data || [];
+          
+          const matching = pageCerts.filter((c) => 
+            (c.studentName || c.traineeName || "").toLowerCase().includes(searchName.toLowerCase())
+          );
+          
+          if (matching.length > 0) {
+            allFoundCerts = [...allFoundCerts, ...matching];
+          }
+
+          if (pageCerts.length < 100 || currentPage >= data.pagination?.totalPages) {
+            hasMore = false;
+          } else {
+            currentPage++;
+          }
+        } catch (e) {
+          hasMore = false;
+        }
+      }
+
+      if (allFoundCerts.length > 0) {
+        // تجميع الشهادات حسب studentId
+        const map = new Map();
+        allFoundCerts.forEach((c) => {
+          const key = c.studentId || c.certificateNumber || c._id;
+          if (!map.has(key)) {
+            map.set(key, {
+              groupKey: key,
+              studentId: c.studentId || null,
+              displayId: c.studentId || c.certificateNumber || c._id,
+              studentName: c.studentName || c.traineeName || null,
+              certificates: [],
+            });
+          }
+          if (!map.get(key).studentName && (c.studentName || c.traineeName)) {
+            map.get(key).studentName = c.studentName || c.traineeName;
+          }
+          map.get(key).certificates.push(c);
+        });
+
+        const foundGroups = Array.from(map.values()).map((entry) => ({
+          ...entry,
+          certCount: entry.certificates.length,
+        }));
+
+        // إضافة المجموعات الجديدة إلى القائمة
+        setGroups(prev => {
+          const existingKeys = new Set(prev.map(g => g.groupKey));
+          const newGroups = foundGroups.filter(g => !existingKeys.has(g.groupKey));
+          return [...newGroups, ...prev];
+        });
+
+        if (foundGroups.length > 0) {
+          openDialogFor(foundGroups[0], "view");
+          toast.success(`تم العثور على ${foundGroups.length} طالب، يعرض الأول`);
+        }
+      } else {
+        toast.error("لم يتم العثور على طالب بهذا الاسم");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("تعذر البحث بالاسم");
+    }
+  };
+
+  const handleSearchStudent = async () => {
+    const searchTerm = filter.trim();
+    if (!searchTerm) return;
+
+    // البحث في البيانات المحملة أولاً
+    const localGroup = groups.find(
+      (g) => (g.displayId || "").toString() === searchTerm
+    );
+
+    if (localGroup) {
+      openDialogFor(localGroup, "view");
+      return;
+    }
+
+    // إذا لم يتم العثور محلياً، البحث في API
+    try {
+      const { data } = await api.get("/certificates/search", {
+        params: { studentId: searchTerm },
+      });
+
+      if (data && Array.isArray(data) && data.length > 0) {
+        // تجميع الشهادات حسب studentId
+        const map = new Map();
+        data.forEach((c) => {
+          const key = c.studentId || c.certificateNumber || c._id;
+          if (!map.has(key)) {
+            map.set(key, {
+              groupKey: key,
+              studentId: c.studentId || null,
+              displayId: c.studentId || c.certificateNumber || c._id,
+              studentName: c.studentName || c.traineeName || null,
+              certificates: [],
+            });
+          }
+          if (!map.get(key).studentName && (c.studentName || c.traineeName)) {
+            map.get(key).studentName = c.studentName || c.traineeName;
+          }
+          map.get(key).certificates.push(c);
+        });
+
+        const foundGroups = Array.from(map.values()).map((entry) => ({
+          ...entry,
+          certCount: entry.certificates.length,
+        }));
+
+        // إضافة المجموعات الجديدة إلى القائمة
+        setGroups(prev => {
+          const existingKeys = new Set(prev.map(g => g.groupKey));
+          const newGroups = foundGroups.filter(g => !existingKeys.has(g.groupKey));
+          return [...newGroups, ...prev];
+        });
+
+        // فتح أول مجموعة وجدت
+        if (foundGroups.length > 0) {
+          openDialogFor(foundGroups[0], "view");
+          toast.success(`تم العثور على ${foundGroups[0].certCount} شهادة`);
+        }
+      } else {
+        // محاولة البحث برقم الشهادة إذا لم يتم العثور على طالب
+        try {
+          const { data: certData } = await api.get('/certificates/verify', { 
+            params: { certificate: searchTerm } 
+          });
+          if (certData?.valid && certData?.certificate) {
+            const cert = certData.certificate;
+            setCertResult(cert);
+            
+            // إضافة الشهادة إلى القائمة
+            const key = cert.studentId || cert.certificateNumber || cert._id;
+            const existingGroup = groups.find(g => g.groupKey === key || g.certificates.some(c => c._id === cert._id || c.certificateNumber === cert.certificateNumber));
+            
+            if (!existingGroup) {
+              const newGroup = {
+                groupKey: key,
+                studentId: cert.studentId || null,
+                displayId: cert.studentId || cert.certificateNumber || cert._id,
+                studentName: cert.studentName || cert.traineeName || null,
+                certificates: [cert],
+                certCount: 1,
+              };
+              setGroups(prev => [newGroup, ...prev]);
+              openDialogFor(newGroup, "view");
+              toast.success('تم العثور على الشهادة');
+            } else {
+              openDialogFor(existingGroup, "view");
+              toast.success('تم العثور على الشهادة');
+            }
+            return;
+          }
+        } catch (e) {
+          // تجاهل خطأ البحث برقم الشهادة
+        }
+        toast.error("لم يتم العثور على طالب أو شهادة بهذا المعرف");
+      }
+    } catch (err) {
+      console.error(err);
+      const errorMsg = err.response?.data?.message || "تعذر البحث عن الطالب";
+      toast.error(errorMsg);
+    }
+  };
+
+  const searchByCertificateNumber = async (certNumber) => {
+    const num = certNumber || filter.trim();
     if (!num) return;
     try {
       const { data } = await api.get('/certificates/verify', { params: { certificate: num } });
       if (data?.valid && data?.certificate) {
-        setCertResult(data.certificate);
+        const cert = data.certificate;
+        setCertResult(cert);
+        
+        // إضافة الشهادة إلى القائمة إذا لم تكن موجودة
+        const key = cert.studentId || cert.certificateNumber || cert._id;
+        const existingGroup = groups.find(g => g.groupKey === key || g.certificates.some(c => c._id === cert._id || c.certificateNumber === cert.certificateNumber));
+        
+        if (!existingGroup) {
+          // إنشاء مجموعة جديدة وإضافتها
+          const newGroup = {
+            groupKey: key,
+            studentId: cert.studentId || null,
+            displayId: cert.studentId || cert.certificateNumber || cert._id,
+            studentName: cert.studentName || cert.traineeName || null,
+            certificates: [cert],
+            certCount: 1,
+          };
+          setGroups(prev => [newGroup, ...prev]);
+          openDialogFor(newGroup, "view");
+          toast.success('تم العثور على الشهادة وإضافتها إلى القائمة');
+        } else {
+          // التحقق من وجود الشهادة في المجموعة
+          const certExists = existingGroup.certificates.some(c => c._id === cert._id || c.certificateNumber === cert.certificateNumber);
+          if (!certExists) {
+            // إضافة الشهادة إلى المجموعة الموجودة
+            const updatedGroups = groups.map(g => 
+              g.groupKey === existingGroup.groupKey
+                ? {
+                    ...g,
+                    certificates: [...g.certificates, cert],
+                    certCount: g.certCount + 1,
+                  }
+                : g
+            );
+            setGroups(updatedGroups);
+            // تحديث المجموعة المحددة
+            const updatedGroup = updatedGroups.find(g => g.groupKey === existingGroup.groupKey);
+            if (updatedGroup) {
+              openDialogFor(updatedGroup, "view");
+            }
+            toast.success('تم العثور على الشهادة وإضافتها إلى القائمة');
+          } else {
+            openDialogFor(existingGroup, "view");
+            toast.success('تم العثور على الشهادة');
+          }
+        }
       } else {
         setCertResult(null);
         toast.error('لم يتم العثور على شهادة بهذا الرقم');
@@ -165,7 +424,8 @@ export default function AllCertificates() {
     } catch (err) {
       console.error(err);
       setCertResult(null);
-      toast.error('تعذر البحث عن الشهادة');
+      const errorMsg = err.response?.data?.message || 'تعذر البحث عن الشهادة';
+      toast.error(errorMsg);
     }
   };
 
@@ -359,6 +619,95 @@ export default function AllCertificates() {
     }
   };
 
+  const handleExportToExcel = async () => {
+    try {
+      toast.info("جارٍ تحميل البيانات...");
+      setLoading(true);
+
+      // جلب جميع البيانات من جميع الصفحات
+      let allCertificates = [];
+      let currentPage = 1;
+      let hasMore = true;
+      const limit = 100;
+
+      while (hasMore) {
+        try {
+          const { data } = await api.get(`/certificates?page=${currentPage}&limit=${limit}`);
+          const pageCerts = data.data || [];
+          
+          if (pageCerts.length > 0) {
+            allCertificates = [...allCertificates, ...pageCerts];
+          }
+
+          if (pageCerts.length < limit || currentPage >= (data.pagination?.totalPages || 1)) {
+            hasMore = false;
+          } else {
+            currentPage++;
+          }
+        } catch (e) {
+          console.error("Error fetching page:", currentPage, e);
+          hasMore = false;
+        }
+      }
+
+      if (allCertificates.length === 0) {
+        toast.error("لا توجد بيانات للتنزيل");
+        setLoading(false);
+        return;
+      }
+
+      // تحضير البيانات للتصدير
+      const excelData = allCertificates.map((cert, index) => ({
+        "م": index + 1,
+        "رقم الشهادة": cert.certificateNumber || cert._id || "",
+        "معرف الطالب": cert.studentId || "",
+        "اسم الطالب": cert.studentName || cert.traineeName || "",
+        "اسم الدورة": cert.courseName || "",
+        "اسم المدرب": cert.trainerName || "",
+        "تاريخ الإنشاء": cert.createdAt ? new Date(cert.createdAt).toLocaleDateString("ar-EG") : "",
+        "تاريخ الإصدار": cert.issueDate ? new Date(cert.issueDate).toLocaleDateString("ar-EG") : "",
+        "رابط الشهادة": cert.pdfUrl || cert.certificateUrl || "",
+        "رابط التحقق": cert.verificationUrl || (cert.certificateNumber ? `https://desn.pro/verify?certificate=${cert.certificateNumber}` : ""),
+      }));
+
+      // إنشاء ورقة عمل
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      
+      // تحديد عرض الأعمدة
+      const columnWidths = [
+        { wch: 5 },   // م
+        { wch: 20 },  // رقم الشهادة
+        { wch: 15 },  // معرف الطالب
+        { wch: 25 },  // اسم الطالب
+        { wch: 30 },  // اسم الدورة
+        { wch: 20 },  // اسم المدرب
+        { wch: 15 },  // تاريخ الإنشاء
+        { wch: 15 },  // تاريخ الإصدار
+        { wch: 50 },  // رابط الشهادة
+        { wch: 50 },  // رابط التحقق
+      ];
+      worksheet['!cols'] = columnWidths;
+
+      // إنشاء كتاب عمل
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "الشهادات");
+
+      // إنشاء اسم الملف مع التاريخ
+      const date = new Date().toISOString().split('T')[0];
+      const filename = `الشهادات_${date}.xlsx`;
+
+      // تنزيل الملف
+      XLSX.writeFile(workbook, filename);
+      
+      toast.success(`تم تنزيل ${allCertificates.length} شهادة بنجاح`);
+      setLoading(false);
+    } catch (err) {
+      console.error("Error exporting to Excel:", err);
+      toast.error("حدث خطأ أثناء تنزيل البيانات");
+      setLoading(false);
+    }
+  };
+
   return (
     <>
       <div className="relative mt-8 h-72 w-full rounded-xl bg-cover bg-center bg-[url('/img/background-image.png')]">
@@ -367,25 +716,30 @@ export default function AllCertificates() {
 
       <Card className="mx-3 -mt-16 mb-6 lg:mx-4 border shadow">
         <CardHeader className="p-4 text-right">
+        <Typography variant="h2" className="font-arabic my-4">
+                  إدارة الطلاب والشهادات
+                </Typography>
           <div className="flex flex-col md:flex-row md:items-center gap-4">
-            <Typography variant="h2" className="font-arabic flex-1">
-              إدارة الطلاب والشهادات
-            </Typography>
+      
+            <div className="flex-1">
+       
+    
+            </div>
             <div className="flex flex-col md:flex-row items-center gap-2">
               <div className="flex items-center gap-x-2">
                 <Input
-                  label="معرف الطالب"
+                  label="رقم شهادة"
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSearchStudent();
+                    }
+                  }}
                   className="font-arabic"
                 />
                 <Button
-                  onClick={() => {
-                    const grp = groups.find(
-                      (g) => (g.displayId || "").toString() === filter.trim()
-                    );
-                    if (grp) openDialogFor(grp, "view");
-                  }}
+                  onClick={handleSearchStudent}
                   disabled={!filter.trim()}
                   color="blue"
                   className="flex items-center gap-x-2 font-arabic"
@@ -396,19 +750,24 @@ export default function AllCertificates() {
               </div>
               <div className="flex items-center gap-x-2">
                 <Input
-                  label="رقم الشهادة"
-                  value={certQuery}
-                  onChange={(e) => setCertQuery(e.target.value)}
+                  label="اسم الطالب"
+                  value={nameFilter}
+                  onChange={(e) => setNameFilter(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSearchByName();
+                    }
+                  }}
                   className="font-arabic"
                 />
                 <Button
-                  onClick={searchByCertificateNumber}
-                  disabled={!certQuery.trim()}
-                  color="green"
+                  onClick={handleSearchByName}
+                  disabled={!nameFilter.trim()}
+                  color="purple"
                   className="flex items-center gap-x-2 font-arabic"
                 >
                   <MagnifyingGlassIcon className="h-5 w-5 text-white" />
-                  تحقق من الشهادة
+                  بحث بالاسم
                 </Button>
               </div>
               <Button
@@ -419,6 +778,16 @@ export default function AllCertificates() {
                 className="font-arabic"
               >
                 {bulkDeleting ? "جارٍ حذف المحددين..." : "حذف المحددين"}
+              </Button>
+              <Button
+                color="green"
+                variant="gradient"
+                onClick={handleExportToExcel}
+                disabled={loading}
+                className="font-arabic flex items-center gap-2"
+              >
+                <DocumentArrowDownIcon className="h-5 w-5 text-white" />
+                تنزيل Excel
               </Button>
             </div>
           </div>
@@ -441,7 +810,12 @@ export default function AllCertificates() {
                   </TableCell>
                   <TableCell align="center" sx={{ fontWeight: 'bold' }} >
                     <Typography variant="h6" className="font-arabic flex-1">
-                       معرف الطالب
+                       رقم شهادة
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="center" sx={{ fontWeight: 'bold' }}>
+                    <Typography variant="h6" className="font-arabic flex-1">
+                       اسم الطالب
                     </Typography>
                   </TableCell>
                   <TableCell align="center" sx={{ fontWeight: 'bold' }}>
@@ -459,13 +833,13 @@ export default function AllCertificates() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                  <TableCell colSpan={4} align="center">
+                  <TableCell colSpan={5} align="center">
                       <CircularProgress />
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                  <TableCell colSpan={4} align="center">
+                  <TableCell colSpan={5} align="center">
                       لا توجد بيانات للعرض
                     </TableCell>
                   </TableRow>
@@ -484,6 +858,9 @@ export default function AllCertificates() {
                         />
                       </TableCell>
                       <TableCell align="center">{g.displayId}</TableCell>
+                      <TableCell align="center" className="font-arabic">
+                        {g.studentName || "—"}
+                      </TableCell>
                       <TableCell align="center">{g.certCount}</TableCell>
                       <TableCell align="center">
                         <Box display="flex" justifyContent="center" gap={1}>
