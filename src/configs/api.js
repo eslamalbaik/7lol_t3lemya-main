@@ -2,7 +2,7 @@ import axios from 'axios';
 import Cookies from 'js-cookie';
 
 const DEFAULT_LOCAL_API = 'http://localhost:5000/api';
-const DEFAULT_PROD_API = 'https://api.verifydespro.online';
+const DEFAULT_PROD_API = 'https://api.verifydespro.online/api';
 
 const API_BASE_URL =
   typeof window !== 'undefined' && window.location.hostname === 'localhost'
