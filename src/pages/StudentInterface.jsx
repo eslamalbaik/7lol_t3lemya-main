@@ -197,7 +197,7 @@ function triggerDownload(certificateUrl, filename = "certificate.pdf") {
       <div className="relative h-72 w-full n rounded-xl bg-cover bg-center mt-48">
         <div className="absolute inset-0 bg-white-900/75" />
         <div className="absolute inset-0 mb-32 flex flex-col justify-center items-center text-center p-4">
-          <img src="/img/logopro.jpg" alt="Logo" />
+          <img src="/img/logopro.jpg" className="w-40 h-40 lg:w-64 lg:h-64 -mb-12" alt="Logo" />
           <Typography variant="h5" className="mt-4 text-white font-arabic" style={{ fontWeight: 500, fontStyle: 'normal' }}>
             المصمم المحترف
           </Typography>
@@ -211,7 +211,7 @@ function triggerDownload(certificateUrl, filename = "certificate.pdf") {
             <div className="flex items-center gap-4 flex-1">
               <Avatar src="/img/certificate.png" size="xl" variant="rounded" />
               <div>
-                <Typography variant="h2" className="font-arabic text-[#1C1CB0]" style={{ fontWeight: 500, fontStyle: 'normal' }}>
+                <Typography variant="h3" className="font-arabic text-[#1C1CB0]" style={{ fontWeight: 500, fontStyle: 'normal' }}>
                   منصة استلام الشهادات
                 </Typography>
                 <Typography
